@@ -6,7 +6,7 @@ use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
 use bevy::utils::HashSet;
-use crate::components::{Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromPlayer, Laser, Movable, SpriteSize, Velocity};
+use crate::components::{Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable, Player, SpriteSize, Velocity};
 use crate::enemy::EnemyPlugin;
 use crate::player::PlayerPlugin;
 
@@ -60,6 +60,7 @@ fn main() {
         .add_startup_system(setup_system)
         .add_system(movable_system)
         .add_system(player_laser_hit_enemy_system)
+        .add_system(enemy_laser_hit_player_system)
         .add_system(explosion_to_spawn_system)
         .add_system(explosion_animation_system)
         .run();
@@ -153,7 +154,7 @@ fn player_laser_hit_enemy_system(
                 laser_tf.translation,
                 laser_size.0 * laser_scale,
                 enemy_tf.translation,
-                enemy_size.0 * enemy_scale,
+                enemy_size.0 * enemy_scale * 100.,
             );
 
             //当たり判定による行動
@@ -169,6 +170,42 @@ fn player_laser_hit_enemy_system(
 
                 //爆発エフェクトをスポーンさせる
                 commands.spawn().insert(ExplosionToSpawn(enemy_tf.translation.clone()));
+            }
+        }
+    }
+}
+
+fn enemy_laser_hit_player_system(
+    mut commands: Commands,
+    laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromEnemy>)>,
+    player_query: Query<(Entity, &Transform, &SpriteSize), With<Player>>,
+) {
+    if let Ok((player_entity, player_tf, player_size)) = player_query.get_single() {
+        let player_scale = Vec2::from(player_tf.scale.xy());
+
+        for (laser_entity, laser_tf, laser_size) in laser_query.iter() {
+            let laser_scale = Vec2::from(laser_tf.scale.xy());
+
+            // determine if collision
+            let collision = collide(
+                laser_tf.translation,
+                laser_size.0 * laser_scale,
+                player_tf.translation,
+                player_size.0 * player_scale*100.,
+            );
+
+            // perform the collision
+            if let Some(_) = collision {
+                // remove the player
+                commands.entity(player_entity).despawn();
+
+                // remove the laser
+                commands.entity(laser_entity).despawn();
+
+                // spawn the explosionToSpawn
+                commands.spawn().insert(ExplosionToSpawn(player_tf.translation.clone()));
+
+                break;
             }
         }
     }
