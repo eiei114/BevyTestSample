@@ -1,14 +1,20 @@
-mod player;
-mod components;
-mod enemy;
+#![allow(unused)]
 
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
-use bevy::utils::HashSet;
-use crate::components::{Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable, Player, SpriteSize, Velocity};
-use crate::enemy::EnemyPlugin;
-use crate::player::PlayerPlugin;
+use components::{
+    Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
+    Player, SpriteSize, Velocity,
+};
+use enemy::EnemyPlugin;
+use player::PlayerPlugin;
+use std::collections::HashSet;
+
+mod components;
+mod enemy;
+mod player;
+
 
 const PLAYER_SPRITE: &str = "Player.png";
 const PLAYER_SIZE: (f32, f32) = (1.5, 0.78125);
@@ -28,7 +34,9 @@ const SPRITE_SCALE: f32 = 0.5;
 const TIME_STEP: f32 = 1. / 60.;
 const BASE_SPEED: f32 = 500.;
 
+const PLAYER_RESPAWN_DELAY: f64 = 2.;
 const ENEMY_MAX: u32 = 2;
+const FORMATION_MEMBERS_MAX: u32 = 2;
 
 pub struct WinSize {
     pub w: f32,
@@ -44,6 +52,32 @@ struct GameTextures {
 }
 
 struct EnemyCount(u32);
+
+struct PlayerState {
+    on: bool,
+    //生きているか
+    last_shot: f64, //
+}
+
+impl Default for PlayerState {
+    fn default() -> Self {
+        Self {
+            on: false,
+            last_shot: -1.,
+        }
+    }
+}
+
+impl PlayerState {
+    pub fn shot(&mut self, time: f64) {
+        self.on = false;
+        self.last_shot = time;
+    }
+    pub fn spawned(&mut self) {
+        self.on = true;
+        self.last_shot = -1.;
+    }
+}
 
 fn main() {
     App::new()
@@ -177,6 +211,8 @@ fn player_laser_hit_enemy_system(
 
 fn enemy_laser_hit_player_system(
     mut commands: Commands,
+    mut player_state: ResMut<PlayerState>,
+    time: Res<Time>,
     laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromEnemy>)>,
     player_query: Query<(Entity, &Transform, &SpriteSize), With<Player>>,
 ) {
@@ -191,13 +227,14 @@ fn enemy_laser_hit_player_system(
                 laser_tf.translation,
                 laser_size.0 * laser_scale,
                 player_tf.translation,
-                player_size.0 * player_scale*100.,
+                player_size.0 * player_scale * 100.,
             );
 
             // perform the collision
             if let Some(_) = collision {
                 // remove the player
                 commands.entity(player_entity).despawn();
+                player_state.shot(time.seconds_since_startup());
 
                 // remove the laser
                 commands.entity(laser_entity).despawn();
